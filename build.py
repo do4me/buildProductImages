@@ -329,12 +329,27 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
             print(f"[SKIP] {row.sku}: {e}")
             return
 
-        with open_scale_rotate(dir_path / f"{row.sku}_B.png", row.rot_b, max_b) as img_b:
-            _paste_centered(base, img_b, pos_b)
+        # ---- 新增逻辑：SKU 末位为偶数时，交换 B/C 的位置与角度（不交换最大高度）----
+        sku_tail = row.sku.strip()[-1] if row.sku and row.sku.strip() else ""
+        is_even_tail = sku_tail.isdigit() and (int(sku_tail) % 2 == 0)
+
+        if is_even_tail:
+            # 交换位置
+            pos_B, pos_C = pos_c, pos_b
+            # 交换角度
+            rot_B, rot_C = row.rot_c, row.rot_b
+        else:
+            pos_B, pos_C = pos_b, pos_c
+            rot_B, rot_C = row.rot_b, row.rot_c
+        # 高度限制不交换：B 用 max_b，C 用 max_c
+        # ---------------------------------------------------------------
+
+        with open_scale_rotate(dir_path / f"{row.sku}_B.png", rot_B, max_b) as img_b:
+            _paste_centered(base, img_b, pos_B)
         with open_scale_rotate(dir_path / f"{row.sku}_A.png", row.rot_a, max_a) as img_a:
             _paste_centered(base, img_a, pos_a)
-        with open_scale_rotate(dir_path / f"{row.sku}_C.png", row.rot_c, max_c) as img_c:
-            _paste_centered(base, img_c, pos_c)
+        with open_scale_rotate(dir_path / f"{row.sku}_C.png", rot_C, max_c) as img_c:
+            _paste_centered(base, img_c, pos_C)
 
         base.save(out_path)
         print(f"[OK] {out_path.relative_to(output_root)}")
