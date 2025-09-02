@@ -315,7 +315,7 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
 
         # 底部对齐绘制文字
         tx = nx + header_w
-        ty = bar_bottom - th - 50
+        ty = bar_bottom - 100
         draw.text((tx, ty), name_text, font=name_font, fill=name_attr.text_color)
 
         # ProductInfo
