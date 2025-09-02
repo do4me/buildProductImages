@@ -58,7 +58,7 @@ HEX_DIGITS = set("0123456789abcdefABCDEF")
 class ProductInfoAttr:
     font_file: str
     text_color: str
-    font_size: int  # in pt
+    font_size: int
     top_left: tuple[int, int]
 
 
@@ -67,7 +67,7 @@ class ProductNameAttr:
     font_file: str
     bg_color: str
     text_color: str
-    font_size: int  # in pt
+    font_size: int
     top_left: tuple[int, int]
 
 
@@ -82,7 +82,6 @@ def _is_valid_hex_color(s: str) -> bool:
 
 
 def _read_lines(path: Path) -> List[str]:
-    # Robustly strip CR/LF and whitespace; keep UTF-8 BOM tolerant
     with path.open("r", encoding="utf-8-sig") as f:
         return [ln.rstrip("\r\n").strip() for ln in f.readlines()]
 
@@ -114,22 +113,18 @@ def _parse_product_info_attr(dir_path: Path) -> ProductInfoAttr:
     p = dir_path / "productInfoAttr.txt"
     lines = _read_lines(p)
     if len(lines) < 4:
-        raise ValueError("productInfoAttr.txt must have 4 lines: font_file, text_color, font_size, top_left x,y")
-    font_file, text_color, font_size_s, pos_s = lines[0], lines[1], lines[2], lines[3]
+        raise ValueError("productInfoAttr.txt must have 4 lines")
+    font_file, text_color, font_size_s, pos_s = lines
 
     if not _font_exists(dir_path, font_file):
         raise FileNotFoundError(f"Font file not found for productInfo: {font_file}")
     if not _is_valid_hex_color(text_color):
         raise ValueError(f"Invalid productInfo text color: {text_color}")
-    try:
-        font_size = int(font_size_s)
-        if font_size <= 0:
-            raise ValueError
-    except Exception:
-        raise ValueError(f"Invalid productInfo font size: {font_size_s}")
+    font_size = int(font_size_s)
+    if font_size <= 0:
+        raise ValueError("Invalid productInfo font size")
 
     pos = _parse_xy(pos_s, "productInfo")
-
     return ProductInfoAttr(font_file, "#" + _normalize_hex(text_color), font_size, pos)
 
 
@@ -137,8 +132,8 @@ def _parse_product_name_attr(dir_path: Path) -> ProductNameAttr:
     p = dir_path / "productNameAttr.txt"
     lines = _read_lines(p)
     if len(lines) < 5:
-        raise ValueError("productNameAttr.txt must have 5 lines: font_file, bg_color, text_color, font_size, top_left x,y")
-    font_file, bg_color, text_color, font_size_s, pos_s = lines[0], lines[1], lines[2], lines[3], lines[4]
+        raise ValueError("productNameAttr.txt must have 5 lines")
+    font_file, bg_color, text_color, font_size_s, pos_s = lines
 
     if not _font_exists(dir_path, font_file):
         raise FileNotFoundError(f"Font file not found for productName: {font_file}")
@@ -146,15 +141,11 @@ def _parse_product_name_attr(dir_path: Path) -> ProductNameAttr:
         raise ValueError(f"Invalid productName background color: {bg_color}")
     if not _is_valid_hex_color(text_color):
         raise ValueError(f"Invalid productName text color: {text_color}")
-    try:
-        font_size = int(font_size_s)
-        if font_size <= 0:
-            raise ValueError
-    except Exception:
-        raise ValueError(f"Invalid productName font size: {font_size_s}")
+    font_size = int(font_size_s)
+    if font_size <= 0:
+        raise ValueError("Invalid productName font size")
 
     pos = _parse_xy(pos_s, "productName")
-
     return ProductNameAttr(
         font_file,
         "#" + _normalize_hex(bg_color),
@@ -164,7 +155,7 @@ def _parse_product_name_attr(dir_path: Path) -> ProductNameAttr:
     )
 
 
-def validate_directory(dir_path: Path) -> tuple[bool, str | None, ProductNameAttr | None, ProductInfoAttr | None]:
+def validate_directory(dir_path: Path):
     ok, missing = _require_files(dir_path)
     if not ok:
         return False, f"Missing required files: {', '.join(missing)}", None, None
@@ -175,18 +166,18 @@ def validate_directory(dir_path: Path) -> tuple[bool, str | None, ProductNameAtt
         return False, str(e), None, None
     return True, None, name_attr, info_attr
 
-# ---- Excel parsing, positions, & generation ----
+
 try:
-    import openpyxl  # type: ignore
+    import openpyxl
 except Exception:
     openpyxl = None
 
 try:
-    from PIL import Image, ImageDraw, ImageFont  # type: ignore
+    from PIL import Image, ImageDraw, ImageFont
 except Exception:
-    Image = None  # type: ignore
-    ImageDraw = None  # type: ignore
-    ImageFont = None  # type: ignore
+    Image = None
+    ImageDraw = None
+    ImageFont = None
 
 
 @dataclass(slots=True)
@@ -202,53 +193,30 @@ class ExcelRow:
 
 def read_products_excel(xlsx_path: Path) -> list[ExcelRow]:
     if openpyxl is None:
-        raise RuntimeError("openpyxl is required to read Products.xlsx. pip install openpyxl")
-    if not xlsx_path.is_file():
-        raise FileNotFoundError(f"Products.xlsx not found: {xlsx_path}")
-
+        raise RuntimeError("openpyxl required")
     wb = openpyxl.load_workbook(xlsx_path, data_only=True, read_only=True)
     ws = wb.active
-
-    def _to_int(v):
-        try:
-            return int(v)
-        except Exception:
-            return 0
-
     rows: list[ExcelRow] = []
     for row in ws.iter_rows(min_row=2, values_only=True):
-        if row is None:
+        if not row:
             continue
-        folder = (row[0] or "").strip()
-        sku = (row[1] or "").strip()
-        product_name = (row[2] or "").strip()
-        product_info = (row[3] or "").strip()
-        rot_a = _to_int(row[4])
-        rot_b = _to_int(row[5])
-        rot_c = _to_int(row[6])
+        folder, sku, name, info, ra, rb, rc = row[:7]
         if not folder or not sku:
             continue
-        rows.append(ExcelRow(folder, sku, product_name, product_info, rot_a, rot_b, rot_c))
+        rows.append(ExcelRow(folder.strip(), sku.strip(), (name or "").strip(),
+                             (info or "").strip(), int(ra or 0), int(rb or 0), int(rc or 0)))
     wb.close()
     return rows
 
 
 def check_sku_images(dir_path: Path, sku: str) -> tuple[bool, list[str]]:
     expected = [f"{sku}_A.png", f"{sku}_B.png", f"{sku}_C.png"]
-    missing: list[str] = [fn for fn in expected if not (dir_path / fn).is_file()]
+    missing = [fn for fn in expected if not (dir_path / fn).is_file()]
     return (len(missing) == 0, missing)
 
 
 def copy_background_to_out(dir_path: Path, out_dir: Path, sku: str, product_name: str) -> Path:
-    """
-    Copy background.png from dir_path to out_dir as {sku}_{ProductNameNoSpaces}.png.
-    Ensures out_dir exists. Returns destination path.
-    """
-    if Image is None:
-        raise RuntimeError("Pillow (PIL) is required. pip install pillow")
     src = dir_path / "background.png"
-    if not src.is_file():
-        raise FileNotFoundError(f"background.png not found in {dir_path}")
     out_dir.mkdir(parents=True, exist_ok=True)
     safe_name = sku + "_" + product_name.replace(" ", "")
     dst = out_dir / f"{safe_name}.png"
@@ -257,87 +225,56 @@ def copy_background_to_out(dir_path: Path, out_dir: Path, sku: str, product_name
     return dst
 
 
-def read_positions(dir_path: Path) -> tuple[tuple[int, int], tuple[int, int], tuple[int, int]]:
-    p = dir_path / "positions.txt"
-    lines = _read_lines(p)
-    if len(lines) < 3:
-        raise ValueError("positions.txt must have 3 lines for B, A, C centers (x,y)")
+def read_positions(dir_path: Path):
+    lines = _read_lines(dir_path / "positions.txt")
     b = _parse_xy(lines[0], "B center")
     a = _parse_xy(lines[1], "A center")
     c = _parse_xy(lines[2], "C center")
     return b, a, c
 
 
-def read_max_heights(dir_path: Path) -> tuple[int, int, int]:
-    """
-    Read maxheight.txt: line1=A max height, line2=B, line3=C (positive integers).
-    """
-    p = dir_path / "maxheight.txt"
-    lines = _read_lines(p)
-    if len(lines) < 3:
-        raise ValueError("maxheight.txt must have 3 lines: A_max_h, B_max_h, C_max_h (positive integers)")
-    def _parse_pos_int(s: str, label: str) -> int:
-        try:
-            v = int(s)
-            if v <= 0:
-                raise ValueError
-            return v
-        except Exception:
-            raise ValueError(f"Invalid {label} in maxheight.txt: '{s}' (must be positive integer)")
-    a_h = _parse_pos_int(lines[0], "A max height")
-    b_h = _parse_pos_int(lines[1], "B max height")
-    c_h = _parse_pos_int(lines[2], "C max height")
-    return a_h, b_h, c_h
+def read_max_heights(dir_path: Path):
+    lines = _read_lines(dir_path / "maxheight.txt")
+    vals = []
+    for idx, label in enumerate(("A", "B", "C")):
+        v = int(lines[idx])
+        if v <= 0:
+            raise ValueError(f"Invalid {label} max height")
+        vals.append(v)
+    return tuple(vals)
 
 
 def _paste_centered(base: Image.Image, overlay: Image.Image, center: tuple[int, int]) -> None:
     x, y = center
     w, h = overlay.size
     pos = (int(x - w / 2), int(y - h / 2))
-    # Use alpha channel as mask if present
-    mask = overlay.split()[3] if overlay.mode == "RGBA" and len(overlay.getbands()) == 4 else None
+    mask = overlay.split()[3] if overlay.mode == "RGBA" else None
     base.paste(overlay, pos, mask)
 
 
 @contextmanager
 def open_scale_rotate(path: Path, deg: int, max_h: int):
-    """
-    Context manager that opens a PNG, scales down to max_h (if taller, keep aspect), then rotates.
-    Yields an RGBA Image and guarantees close().
-    """
     img = Image.open(path).convert("RGBA")
     try:
         if max_h and img.height > max_h:
             scale = max_h / img.height
-            new_w = int(round(img.width * scale))
-            img = img.resize((new_w, max_h), resample=Image.LANCZOS)
+            img = img.resize((int(round(img.width * scale)), max_h), resample=Image.LANCZOS)
         if deg:
             img = img.rotate(-deg, expand=True, resample=Image.BICUBIC)
         yield img
     finally:
-        try:
-            img.close()
-        except Exception:
-            pass
+        img.close()
 
 
-def generate_images(
-    root: Path,
-    output_root: Path,
-    dir_path: Path,
-    name_attr: ProductNameAttr,
-    info_attr: ProductInfoAttr,
-    row: ExcelRow,
-) -> None:
+def generate_images(root: Path, output_root: Path, dir_path: Path,
+                    name_attr: ProductNameAttr, info_attr: ProductInfoAttr, row: ExcelRow) -> None:
     ok, missing = check_sku_images(dir_path, row.sku)
     if not ok:
-        print(f"[SKIP] {dir_path.name}/{row.sku}: missing {', '.join(missing)}")
+        print(f"[SKIP] {row.sku}: missing {', '.join(missing)}")
         return
 
-    # Compute the mirrored output directory under output_root, preserving structure
     rel_dir = dir_path.relative_to(root)
     out_dir = output_root / rel_dir
-
     out_path = copy_background_to_out(dir_path, out_dir, row.sku, row.product_name)
 
     with Image.open(out_path).convert("RGBA") as base:
@@ -346,75 +283,62 @@ def generate_images(
             name_font = ImageFont.truetype(str(dir_path / name_attr.font_file), name_attr.font_size)
             info_font = ImageFont.truetype(str(dir_path / info_attr.font_file), info_attr.font_size)
         except Exception as e:
-            print(f"[SKIP] {dir_path.name}/{row.sku}: cannot load fonts: {e}")
+            print(f"[SKIP] {row.sku}: cannot load fonts: {e}")
             return
 
-        # ProductName with background (fixed 120px height + header/footer images)
+        # ==== 底部对齐的 ProductName 绘制 ====
         name_text = row.product_name
         bbox = draw.textbbox((0, 0), name_text, font=name_font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         nx, ny = name_attr.top_left
-        BG_H = 119  # px
+        BG_H = 120
 
-        # Load header/footer images from source dir
         try:
             header_img = Image.open(dir_path / "background_bar_header.png").convert("RGBA")
             footer_img = Image.open(dir_path / "background_bar_footer.png").convert("RGBA")
         except Exception as e:
-            print(f"[SKIP] {dir_path.name}/{row.sku}: cannot open header/footer: {e}")
+            print(f"[SKIP] {row.sku}: cannot open header/footer: {e}")
             return
 
-        # Use header/footer as-is (assumed already 120px height)
-        header_resized = header_img
-        footer_resized = footer_img
+        header_w, header_h = header_img.size
+        footer_w, footer_h = footer_img.size
+        bar_bottom = ny + BG_H
 
-        # Draw background behind text area only
+        # 背景矩形
         draw.rectangle(
-            [nx + header_resized.width, ny, nx + header_resized.width + tw, ny + BG_H],
+            [nx + header_w-1, bar_bottom - BG_H, nx + header_w + tw, bar_bottom-1],
             fill=name_attr.bg_color,
         )
+        # 底部对齐贴 header/footer
+        base.alpha_composite(header_img, (nx, bar_bottom - header_h))
+        base.alpha_composite(footer_img, (nx + header_w + tw, bar_bottom - footer_h))
 
-        # Paste header and footer
-        base.alpha_composite(header_resized, (nx, ny))
-        base.alpha_composite(footer_resized, (nx + header_resized.width + tw, ny))
-
-        # Vertically center the text within the 120px bar
-        ty = ny + (BG_H - th) // 3
-        tx = nx + header_resized.width
+        # 底部对齐绘制文字
+        tx = nx + header_w
+        ty = bar_bottom - th - 50
         draw.text((tx, ty), name_text, font=name_font, fill=name_attr.text_color)
 
-        # ProductInfo (text only)
+        # ProductInfo
         draw.text(info_attr.top_left, row.product_info, font=info_font, fill=info_attr.text_color)
 
-        # Read centers and max heights
+        # 图片贴合
         try:
             pos_b, pos_a, pos_c = read_positions(dir_path)
-        except Exception as e:
-            print(f"[SKIP] {dir_path.name}/{row.sku}: {e}")
-            return
-
-        try:
             max_a, max_b, max_c = read_max_heights(dir_path)
         except Exception as e:
-            print(f"[SKIP] {dir_path.name}/{row.sku}: {e}")
+            print(f"[SKIP] {row.sku}: {e}")
             return
 
-        # Apply scaling & rotation, then paste centered
         with open_scale_rotate(dir_path / f"{row.sku}_B.png", row.rot_b, max_b) as img_b:
             _paste_centered(base, img_b, pos_b)
-
         with open_scale_rotate(dir_path / f"{row.sku}_A.png", row.rot_a, max_a) as img_a:
             _paste_centered(base, img_a, pos_a)
-
         with open_scale_rotate(dir_path / f"{row.sku}_C.png", row.rot_c, max_c) as img_c:
             _paste_centered(base, img_c, pos_c)
 
         base.save(out_path)
-        rel_saved = out_path.relative_to(output_root)
-        print(f"[OK] Composed image saved: {rel_saved}")
+        print(f"[OK] {out_path.relative_to(output_root)}")
 
-
-# ---- Runner ----
 
 def iter_directories(root: Path) -> Iterable[Path]:
     for entry in sorted(root.iterdir()):
@@ -423,28 +347,21 @@ def iter_directories(root: Path) -> Iterable[Path]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate directories and generate images.")
-    parser.add_argument("root", nargs="?", default=Path.cwd(), type=Path, help="Root folder (default: cwd)")
-    parser.add_argument("--xlsx", default="Products.xlsx", help="Excel file next to build.py")
-    parser.add_argument("--out", default="output", help="Output directory (default: 'output' under root)")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("root", nargs="?", default=Path.cwd(), type=Path)
+    parser.add_argument("--xlsx", default="Products.xlsx")
+    parser.add_argument("--out", default="output")
     args = parser.parse_args(argv)
 
-    root: Path = args.root.resolve()
-    if not root.is_dir():
-        print(f"Error: root is not a directory: {root}", file=sys.stderr)
-        return 2
-
-    output_root: Path = (root / args.out).resolve()
+    root = args.root.resolve()
+    output_root = (root / args.out).resolve()
     output_root.mkdir(parents=True, exist_ok=True)
 
     try:
-        rows = read_products_excel((root / args.xlsx).resolve())
+        rows = read_products_excel(root / args.xlsx)
     except Exception as e:
         print(f"Error reading Excel: {e}", file=sys.stderr)
         return 2
-
-    print(f"Scanning: {root}  (rows loaded: {len(rows)})")
-    print(f"Output root: {output_root}")
 
     by_folder: dict[str, list[ExcelRow]] = {}
     for r in rows:
@@ -455,24 +372,17 @@ def main(argv: list[str] | None = None) -> int:
         wanted = by_folder.get(d.name)
         if not wanted:
             continue
-        print(f"\n── Checking directory: {d.name} ──")
         valid, err, name_attr, info_attr = validate_directory(d)
-        if not valid or not (name_attr and info_attr):
+        if not valid:
             print(f"[SKIP] {d.name}: {err}")
             continue
         for row in wanted:
-            print(
-                f"  → SKU={row.sku}  Name='{row.product_name}'  Info='{row.product_info}'  "
-                f"Rot(A,B,C)=({row.rot_a},{row.rot_b},{row.rot_c})"
-            )
             any_processed = True
             generate_images(root, output_root, d, name_attr, info_attr, row)
 
     if not any_processed:
         print("No valid rows processed.")
         return 1
-
-    print("\nDone.")
     return 0
 
 
