@@ -25,7 +25,7 @@ from pathlib import Path
 import pandas as pd
 from PIL import Image
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+SCRIPT_DIR = Path.cwd()
 EXCEL_PATH = SCRIPT_DIR / "Products.xlsx"
 OUTPUT_ROOT = SCRIPT_DIR / "output"
 
