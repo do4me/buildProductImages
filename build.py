@@ -286,12 +286,14 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
             print(f"[SKIP] {row.sku}: cannot load fonts: {e}")
             return
 
-        # ==== 底部对齐的 ProductName 绘制 ====
+        # ==== ProductName 绘制（字体中心点对齐） ====
         name_text = row.product_name
         bbox = draw.textbbox((0, 0), name_text, font=name_font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
         nx, ny = name_attr.top_left
         BG_H = 120
+        bar_bottom = ny + BG_H
 
         try:
             header_img = Image.open(dir_path / "background_bar_header.png").convert("RGBA")
@@ -302,21 +304,27 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
 
         header_w, header_h = header_img.size
         footer_w, footer_h = footer_img.size
-        bar_bottom = ny + BG_H
 
         # 背景矩形
         draw.rectangle(
-            [nx + header_w-1, bar_bottom - BG_H, nx + header_w + tw, bar_bottom-1],
+            [nx + header_w - 1, bar_bottom - BG_H, nx + header_w + tw, bar_bottom - 1],
             fill=name_attr.bg_color,
         )
+
         # 底部对齐贴 header/footer
         base.alpha_composite(header_img, (nx, bar_bottom - header_h))
         base.alpha_composite(footer_img, (nx + header_w + tw, bar_bottom - footer_h))
 
-        # 底部对齐绘制文字
+        # ===== 按字体中心点定位文字 =====
         tx = nx + header_w
-        ty = bar_bottom - 100
-        draw.text((tx, ty), name_text, font=name_font, fill=name_attr.text_color)
+        center_y = bar_bottom - BG_H // 2
+        ascent, descent = name_font.getmetrics()
+        baseline_y = center_y - (descent + ascent) / 2 
+        print(ascent, descent)
+
+        # Pillow 新版本支持 anchor，可以直接用基线对齐
+        draw.text((tx, baseline_y), name_text, font=name_font,
+            fill=name_attr.text_color, anchor="la")
 
         # ProductInfo
         draw.text(info_attr.top_left, row.product_info, font=info_font, fill=info_attr.text_color)
@@ -329,19 +337,16 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
             print(f"[SKIP] {row.sku}: {e}")
             return
 
-        # ---- 新增逻辑：SKU 末位为偶数时，交换 B/C 的位置与角度（不交换最大高度）----
+        # ---- SKU 末位为偶数时，交换 B/C 的位置与角度（不交换最大高度）----
         sku_tail = row.sku.strip()[-1] if row.sku and row.sku.strip() else ""
         is_even_tail = sku_tail.isdigit() and (int(sku_tail) % 2 == 0)
 
         if is_even_tail:
-            # 交换位置
             pos_B, pos_C = pos_c, pos_b
-            # 交换角度
             rot_B, rot_C = row.rot_c, row.rot_b
         else:
             pos_B, pos_C = pos_b, pos_c
             rot_B, rot_C = row.rot_b, row.rot_c
-        # 高度限制不交换：B 用 max_b，C 用 max_c
         # ---------------------------------------------------------------
 
         with open_scale_rotate(dir_path / f"{row.sku}_B.png", rot_B, max_b) as img_b:
