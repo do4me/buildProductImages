@@ -320,7 +320,7 @@ def generate_images(root: Path, output_root: Path, dir_path: Path,
         center_y = bar_bottom - BG_H // 2
         ascent, descent = name_font.getmetrics()
         baseline_y = center_y - (descent + ascent) / 2 
-        print(ascent, descent)
+        # print(ascent, descent)
 
         # Pillow 新版本支持 anchor，可以直接用基线对齐
         draw.text((tx, baseline_y), name_text, font=name_font,
